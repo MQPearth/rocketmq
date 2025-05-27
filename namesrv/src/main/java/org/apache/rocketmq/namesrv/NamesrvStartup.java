@@ -58,6 +58,7 @@ public class NamesrvStartup {
 
     public static NamesrvController main0(String[] args) {
         try {
+            // 解析配置 命令行和配置文件的内容
             parseCommandlineAndConfigFile(args);
             NamesrvController controller = createAndStartNamesrvController();
             return controller;
@@ -71,6 +72,7 @@ public class NamesrvStartup {
 
     public static ControllerManager controllerManagerMain() {
         try {
+            // 默认不创建
             if (namesrvConfig.isEnableControllerInNamesrv()) {
                 return createAndStartControllerManager();
             }
@@ -98,6 +100,7 @@ public class NamesrvStartup {
         if (commandLine.hasOption('c')) {
             String file = commandLine.getOptionValue('c');
             if (file != null) {
+                // 读取配置文件的配置
                 InputStream in = new BufferedInputStream(Files.newInputStream(Paths.get(file)));
                 properties = new Properties();
                 properties.load(in);
@@ -139,9 +142,11 @@ public class NamesrvStartup {
     }
 
     public static NamesrvController createAndStartNamesrvController() throws Exception {
-
+        // 控制器保存读取的配置
         NamesrvController controller = createNamesrvController();
+        // 启动服务
         start(controller);
+        // 输出服务相关日志
         NettyServerConfig serverConfig = controller.getNettyServerConfig();
         String tip = String.format("The Name Server boot success. serializeType=%s, address %s:%d", RemotingCommand.getSerializeTypeConfigInThisServer(), serverConfig.getBindAddress(), serverConfig.getListenPort());
         log.info(tip);
@@ -162,24 +167,27 @@ public class NamesrvStartup {
         if (null == controller) {
             throw new IllegalArgumentException("NamesrvController is null");
         }
-
+        // 初始化
         boolean initResult = controller.initialize();
         if (!initResult) {
             controller.shutdown();
             System.exit(-3);
         }
 
+        // 停机钩子
         Runtime.getRuntime().addShutdownHook(new ShutdownHookThread(log, (Callable<Void>) () -> {
             controller.shutdown();
             return null;
         }));
 
+        // 启动
         controller.start();
 
         return controller;
     }
 
     public static ControllerManager createAndStartControllerManager() throws Exception {
+        // 创建和启动控制器
         ControllerManager controllerManager = createControllerManager();
         start(controllerManager);
         String tip = "The ControllerManager boot success. serializeType=" + RemotingCommand.getSerializeTypeConfigInThisServer();
@@ -201,7 +209,7 @@ public class NamesrvStartup {
         if (null == controllerManager) {
             throw new IllegalArgumentException("ControllerManager is null");
         }
-
+        // 初始化
         boolean initResult = controllerManager.initialize();
         if (!initResult) {
             controllerManager.shutdown();

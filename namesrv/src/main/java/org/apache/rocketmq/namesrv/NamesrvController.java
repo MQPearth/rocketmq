@@ -22,6 +22,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 import org.apache.rocketmq.common.ThreadFactoryImpl;
 import org.apache.rocketmq.common.constant.LoggerName;
@@ -55,9 +56,19 @@ public class NamesrvController {
     private static final Logger LOGGER = LoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
     private static final Logger WATER_MARK_LOG = LoggerFactory.getLogger(LoggerName.NAMESRV_WATER_MARK_LOGGER_NAME);
 
+    /**
+     * 配置对象
+     */
     private final NamesrvConfig namesrvConfig;
 
+    /**
+     * Netty 服务端配置
+     */
     private final NettyServerConfig nettyServerConfig;
+
+    /**
+     * Netty 客户端配置
+     */
     private final NettyClientConfig nettyClientConfig;
 
     private final ScheduledExecutorService scheduledExecutorService = ThreadUtils.newScheduledThreadPool(1,
@@ -66,12 +77,32 @@ public class NamesrvController {
     private final ScheduledExecutorService scanExecutorService = ThreadUtils.newScheduledThreadPool(1,
             new BasicThreadFactory.Builder().namingPattern("NSScanScheduledThread").daemon(true).build());
 
+    /**
+     * 键值对配置管理器
+     */
     private final KVConfigManager kvConfigManager;
+
+    /**
+     * 管理所有注册到 NameServer 的 Broker、Topic 与队列等元数据；
+     * <p>
+     * 提供路由查询、注册、注销等功能；
+     * <p>
+     * 例如生产者/消费者在启动时，会从 NameServer 获取 Topic 的路由信息，就是它来处理的。
+     */
     private final RouteInfoManager routeInfoManager;
 
+    /**
+     * 客户端netty
+     */
     private RemotingClient remotingClient;
+    /**
+     * 服务端netty
+     */
     private RemotingServer remotingServer;
 
+    /**
+     * 管理 Broker 与 NameServer 的连接状态
+     */
     private final BrokerHousekeepingService brokerHousekeepingService;
 
     private ExecutorService defaultExecutor;
@@ -80,6 +111,13 @@ public class NamesrvController {
     private BlockingQueue<Runnable> defaultThreadPoolQueue;
     private BlockingQueue<Runnable> clientRequestThreadPoolQueue;
 
+    /**
+     * 把多个配置对象整合起来（如 namesrvConfig 和 nettyServerConfig）；
+     * <p>
+     * 提供加载、持久化、打印配置等功能；
+     * <p>
+     * 方便对配置文件进行统一管理和热加载
+     */
     private final Configuration configuration;
     private FileWatchService fileWatchService;
 
@@ -100,10 +138,15 @@ public class NamesrvController {
 
     public boolean initialize() {
         loadConfig();
+        // 初始化两个netty组件
         initiateNetworkComponents();
+        // 线程池相关
         initiateThreadExecutors();
+        // 注册请求处理器
         registerProcessor();
+        // 调度任务
         startScheduleService();
+        // ssl相关
         initiateSslContext();
         initiateRpcHooks();
         return true;
@@ -114,12 +157,15 @@ public class NamesrvController {
     }
 
     private void startScheduleService() {
+        // 扫描不再活跃的broker
         this.scanExecutorService.scheduleAtFixedRate(NamesrvController.this.routeInfoManager::scanNotActiveBroker,
-            5, this.namesrvConfig.getScanNotActiveBrokerInterval(), TimeUnit.MILLISECONDS);
+                5, this.namesrvConfig.getScanNotActiveBrokerInterval(), TimeUnit.MILLISECONDS);
 
+        // 打印配置
         this.scheduledExecutorService.scheduleAtFixedRate(NamesrvController.this.kvConfigManager::printAllPeriodically,
-            1, 10, TimeUnit.MINUTES);
+                1, 10, TimeUnit.MINUTES);
 
+        // 其他信息 比如请求队列长度
         this.scheduledExecutorService.scheduleAtFixedRate(() -> {
             try {
                 NamesrvController.this.printWaterMark();
@@ -180,7 +226,12 @@ public class NamesrvController {
     }
 
     private void printWaterMark() {
-        WATER_MARK_LOG.info("[WATERMARK] ClientQueueSize:{} ClientQueueSlowTime:{} " + "DefaultQueueSize:{} DefaultQueueSlowTime:{}", this.clientRequestThreadPoolQueue.size(), headSlowTimeMills(this.clientRequestThreadPoolQueue), this.defaultThreadPoolQueue.size(), headSlowTimeMills(this.defaultThreadPoolQueue));
+        WATER_MARK_LOG.info("[WATERMARK] ClientQueueSize:{} ClientQueueSlowTime:{} " +
+                "DefaultQueueSize:{} DefaultQueueSlowTime:{}",
+                this.clientRequestThreadPoolQueue.size(),
+                headSlowTimeMills(this.clientRequestThreadPoolQueue),
+                this.defaultThreadPoolQueue.size(),
+                headSlowTimeMills(this.defaultThreadPoolQueue));
     }
 
     private long headSlowTimeMills(BlockingQueue<Runnable> q) {
@@ -207,9 +258,10 @@ public class NamesrvController {
             this.remotingServer.registerDefaultProcessor(new ClusterTestRequestProcessor(this, namesrvConfig.getProductEnvName()), this.defaultExecutor);
         } else {
             // Support get route info only temporarily
+            // 查询topic路由信息 请求处理器
             ClientRequestProcessor clientRequestProcessor = new ClientRequestProcessor(this);
             this.remotingServer.registerProcessor(RequestCode.GET_ROUTEINFO_BY_TOPIC, clientRequestProcessor, this.clientRequestExecutor);
-
+            // 默认处理器
             this.remotingServer.registerDefaultProcessor(new DefaultRequestProcessor(this), this.defaultExecutor);
         }
     }
@@ -225,9 +277,9 @@ public class NamesrvController {
         if (0 == nettyServerConfig.getListenPort()) {
             nettyServerConfig.setListenPort(this.remotingServer.localListenPort());
         }
-
+        // 更新namesrv地址列表
         this.remotingClient.updateNameServerAddressList(Collections.singletonList(NetworkUtil.getLocalAddress()
-            + ":" + nettyServerConfig.getListenPort()));
+                + ":" + nettyServerConfig.getListenPort()));
         this.remotingClient.start();
 
         if (this.fileWatchService != null) {

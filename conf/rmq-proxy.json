@@ -2,5 +2,5 @@
   "rocketMQClusterName": "DefaultCluster",
   "nameSrvAddr": "127.0.0.1:9876",
   "proxyMode": "local",
-  "brokerConfigPath": "D:/project/java/rocketmq/distribution/conf/broker.conf"
+  "brokerConfigPath": "D:/project/rocketmq/distribution/conf/broker.conf"
 }
